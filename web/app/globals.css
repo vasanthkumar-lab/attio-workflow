@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-raised: #fafbfc;
+  --color-line: #e7e9ee;
+  --color-line-strong: #d6d9e0;
+  --color-ink: #15171c;
+  --color-muted: #656c7a;
+  --color-faint: #99a0ad;
+
+  /* Brand green: buttons, links, selection rings, focus outlines. */
+  --color-accent: #0f9d58;
+  --color-accent-ink: #0a7a43;
+  --color-accent-soft: #e7f6ed;
+
+  /* Success green, kept deeper and more teal so status badges stay apart from the brand. */
+  --color-good: #047857;
+  --color-good-soft: #ddf1ea;
+  --color-warn: #a96c08;
+  --color-warn-soft: #fdf3e3;
+  --color-bad: #cc3f3f;
+  --color-bad-soft: #fdecec;
+  --color-violet: #6b4ef0;
+  --color-violet-soft: #f0ecfe;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+  /* A quieter scrollbar, closer to the app-like feel of Attio */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+}
+
+/*
+ * The workflow builder canvas is dark while the rest of the app stays light.
+ * Redefining the theme variables on this wrapper is enough: every Tailwind colour
+ * utility resolves through them, so bg-surface, text-ink, border-line and the rest
+ * all flip for anything rendered inside.
+ */
+.canvas-dark {
+  --color-canvas: #0d0f13;
+  --color-surface: #171a20;
+  --color-raised: #1c2029;
+  --color-line: #262b34;
+  --color-line-strong: #39404c;
+  --color-ink: #e9edf3;
+  --color-muted: #97a1b0;
+  --color-faint: #6b7483;
+
+  /* Brand and status colours lifted so they hold up against a dark background. */
+  --color-accent: #22c55e;
+  --color-accent-ink: #4ade80;
+  --color-accent-soft: #12331f;
+
+  --color-good: #34d399;
+  --color-good-soft: #10312a;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #332611;
+  --color-bad: #f87171;
+  --color-bad-soft: #35191b;
+  --color-violet: #a78bfa;
+  --color-violet-soft: #241f3d;
+
+  color-scheme: dark;
+}
+
+@layer utilities {
+  /* The dotted builder canvas behind workflow and sequence nodes */
+  .canvas-grid {
+    background-color: var(--color-canvas);
+    background-image: radial-gradient(circle, var(--color-line-strong) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Light-theme shadows vanish on dark, so give the dark canvas its own depth. */
+  .canvas-dark .shadow-card {
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.3);
+  }
+  .canvas-dark .shadow-pop {
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.4);
+  }
+  .shadow-card {
+    box-shadow: 0 1px 2px rgb(16 18 24 / 0.04), 0 1px 3px rgb(16 18 24 / 0.06);
+  }
+  .shadow-pop {
+    box-shadow: 0 6px 16px rgb(16 18 24 / 0.1), 0 2px 6px rgb(16 18 24 / 0.06);
+  }
+}
