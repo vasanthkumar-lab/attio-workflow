@@ -1,0 +1,16 @@
+{
+  "name": "attio-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NestJS CRM API with a Next.js UI for sequences and workflows",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix web install",
+    "dev": "concurrently -n api,web -c green,cyan --kill-others-on-fail \"npm --prefix server run start:dev\" \"npm --prefix web run dev\"",
+    "demo": "concurrently -n api,web -c green,cyan --kill-others-on-fail \"npm --prefix server run start:demo\" \"npm --prefix web run dev\"",
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "test": "npm --prefix server test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
