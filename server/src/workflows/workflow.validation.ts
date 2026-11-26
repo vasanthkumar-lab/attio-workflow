@@ -1,9 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
+import { AGENT_FIELDS } from '../agents/web-agent.service';
 import { validateCondition } from '../common/conditions';
 import { Events } from '../common/events';
 
 const TRIGGERS = [...Object.values(Events), 'manual'];
-const STEP_TYPES = ['enrich', 'score', 'if', 'update', 'addTag', 'enroll', 'webhook'];
+const STEP_TYPES = ['enrich', 'score', 'if', 'update', 'addTag', 'enroll', 'webhook', 'webAgent'];
 
 function validateSteps(steps: any, path: string): string | null {
   if (!Array.isArray(steps)) return `${path} must be an array`;
@@ -36,6 +37,13 @@ function validateSteps(steps: any, path: string): string | null {
       case 'webhook':
         if (typeof s.url !== 'string' || !/^https:\/\//.test(s.url)) return `${p}.url must be an https URL`;
         break;
+      case 'webAgent': {
+        if (typeof s.instruction !== 'string' || !s.instruction.trim()) return `${p}.instruction is required`;
+        if (!Array.isArray(s.fields) || !s.fields.length) return `${p}.fields must be a non-empty array`;
+        const unknown = s.fields.find((f: unknown) => !AGENT_FIELDS.includes(f as never));
+        if (unknown) return `${p}.fields contains "${unknown}"; allowed: ${AGENT_FIELDS.join(', ')}`;
+        break;
+      }
     }
   }
   return null;

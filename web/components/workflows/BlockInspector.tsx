@@ -4,10 +4,11 @@ import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { BLOCK_ICONS } from "./BlockLibrary";
 import { ConditionBuilder } from "@/components/ConditionBuilder";
 import {
-  Badge, Button, IconButton, Input, Menu, MenuItem, SectionTitle, Select,
+  Badge, Button, IconButton, Input, Menu, MenuItem, SectionTitle, Select, Textarea, ToggleRow,
 } from "@/components/ui";
 import {
-  PERSON_FIELDS, STAGES, TONE_CLASSES, TRIGGERS, WRITABLE_FIELDS, blockDef, fieldDef, triggerDef,
+  AGENT_FIELDS, PERSON_FIELDS, STAGES, TONE_CLASSES, TRIGGERS, WRITABLE_FIELDS,
+  blockDef, fieldDef, fieldLabel, triggerDef,
 } from "@/lib/catalog";
 import { cx, humanize } from "@/lib/format";
 import type {
@@ -261,6 +262,8 @@ export function BlockInspector({
           </Section>
         )}
 
+        {step.type === "webAgent" && <WebAgentEditor step={step} onChange={onChange} />}
+
         {step.type === "webhook" && (
           <Section title="URL" last>
             <Input
@@ -358,6 +361,78 @@ function ScoreEditor({
         </Badge>
       </div>
     </Section>
+  );
+}
+
+function WebAgentEditor({
+  step,
+  onChange,
+}: {
+  step: Extract<WorkflowStep, { type: "webAgent" }>;
+  onChange: (next: WorkflowStep) => void;
+}) {
+  const toggleField = (key: string) =>
+    onChange({
+      ...step,
+      fields: step.fields.includes(key)
+        ? step.fields.filter((f) => f !== key)
+        : [...step.fields, key],
+    });
+
+  return (
+    <>
+      <Section title="What to find out">
+        <Textarea
+          rows={4}
+          aria-label="Instruction"
+          value={step.instruction}
+          placeholder="e.g. Find this person's current job title and employer, and what the company does."
+          onChange={(e) => onChange({ ...step, instruction: e.target.value })}
+        />
+        <p className="text-[12px] leading-relaxed text-muted">
+          The agent searches the web, then reports only what it could confirm on a page it
+          read. Anything it cannot verify is left blank rather than guessed.
+        </p>
+      </Section>
+
+      <Section title="Attributes it may fill">
+        <div className="flex flex-wrap gap-1.5">
+          {AGENT_FIELDS.map((key) => {
+            const on = step.fields.includes(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleField(key)}
+                className={cx(
+                  "rounded-md px-2 py-1 text-[12px] transition-colors",
+                  on ? "bg-accent text-white" : "bg-canvas text-muted ring-1 ring-line hover:text-ink",
+                )}
+              >
+                {fieldLabel(key)}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[12px] leading-relaxed text-muted">
+          Nothing outside this list can be written, whatever the instruction says.
+        </p>
+      </Section>
+
+      <Section title="Existing values" last>
+        <ToggleRow
+          label="Overwrite what is already there"
+          description="Off by default, so the agent fills gaps and leaves anything a person entered alone."
+          checked={step.overwrite ?? false}
+          onChange={(overwrite) => onChange({ ...step, overwrite })}
+        />
+        <p className="text-[12px] leading-relaxed text-muted">
+          Needs <code className="font-mono">OPENROUTER_API_KEY</code> on the server. Without it
+          the block logs &ldquo;skipped&rdquo; and the rest of the workflow carries on.
+        </p>
+      </Section>
+    </>
   );
 }
 

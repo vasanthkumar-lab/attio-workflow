@@ -165,6 +165,7 @@ export type WorkflowStep = Positioned &
     | { type: "addTag"; tag: string }
     | { type: "enroll"; sequenceId: string }
     | { type: "webhook"; url: string }
+    | { type: "webAgent"; instruction: string; fields: string[]; overwrite?: boolean }
   );
 
 export type StepType = WorkflowStep["type"];

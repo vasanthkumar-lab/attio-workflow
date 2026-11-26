@@ -135,6 +135,9 @@ export function stepProblem(step: WorkflowStep): string | undefined {
       return step.sequenceId ? undefined : "Choose a sequence";
     case "webhook":
       return /^https:\/\//.test(step.url) ? undefined : "The URL must start with https://";
+    case "webAgent":
+      if (!step.instruction.trim()) return "Say what the agent should find out";
+      return step.fields.length ? undefined : "Choose at least one attribute to fill";
   }
 }
 

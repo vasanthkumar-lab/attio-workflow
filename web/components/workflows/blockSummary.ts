@@ -35,5 +35,8 @@ export function blockSummary(
       } catch {
         return step.url || "No URL set yet";
       }
+    case "webAgent":
+      if (step.fields.length === 0) return "No attributes selected yet";
+      return `Researches ${step.fields.map(fieldLabel).join(", ").toLowerCase()}`;
   }
 }

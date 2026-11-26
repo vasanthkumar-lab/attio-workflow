@@ -220,6 +220,19 @@ export const BLOCKS: BlockDef[] = [
     create: () => ({ type: "enroll", sequenceId: "" }),
   },
   {
+    type: "webAgent",
+    label: "Web agent",
+    description: "Research the record on the web with an LLM and fill in the attributes you pick.",
+    category: "Agents",
+    tone: "violet",
+    create: () => ({
+      type: "webAgent",
+      instruction:
+        "Find this person's current job title and employer, and what the company does.",
+      fields: ["title", "company", "industry"],
+    }),
+  },
+  {
     type: "webhook",
     label: "Send HTTP request",
     description: "POST the person to an HTTPS URL, such as a Slack incoming webhook.",
@@ -229,10 +242,33 @@ export const BLOCKS: BlockDef[] = [
   },
 ];
 
+/**
+ * Attributes the Web agent may write. Mirrors AGENT_FIELDS in
+ * server/src/agents/web-agent.service.ts, which rejects anything else.
+ */
+export const AGENT_FIELDS = [
+  "name",
+  "title",
+  "company",
+  "domain",
+  "industry",
+  "companySize",
+  "location",
+  "linkedinUrl",
+  "description",
+];
+
 export const blockDef = (type: StepType): BlockDef =>
   BLOCKS.find((b) => b.type === type) ?? BLOCKS[0];
 
-export const BLOCK_CATEGORIES = ["Data", "Condition", "Record", "Sequence", "Utilities"];
+export const BLOCK_CATEGORIES = [
+  "Agents",
+  "Data",
+  "Condition",
+  "Record",
+  "Sequence",
+  "Utilities",
+];
 
 /** Tailwind classes per tone, so block colours stay consistent across canvas and library. */
 export const TONE_CLASSES: Record<BlockTone, { chip: string; dot: string }> = {

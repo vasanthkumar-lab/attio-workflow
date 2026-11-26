@@ -22,6 +22,8 @@ export type WorkflowStep = { position?: CanvasPosition } & (
   | { type: 'addTag'; tag: string }
   | { type: 'enroll'; sequenceId: string }
   | { type: 'webhook'; url: string } // e.g. Slack incoming webhook to alert the team
+  /** Researches the record on the web with an LLM and fills in the chosen attributes. */
+  | { type: 'webAgent'; instruction: string; fields: string[]; overwrite?: boolean }
 );
 
 export interface WorkflowTrigger {

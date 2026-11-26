@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Braces, GitBranch, Globe, Mail, Pencil, Search, Sparkles, Tag, X,
+  Bot, Braces, GitBranch, Globe, Mail, Pencil, Search, Sparkles, Tag, X,
 } from "lucide-react";
 import { IconButton } from "@/components/ui";
 import { BLOCKS, BLOCK_CATEGORIES, TONE_CLASSES } from "@/lib/catalog";
@@ -17,6 +17,7 @@ export const BLOCK_ICONS: Record<StepType, React.ComponentType<{ size?: number }
   addTag: Tag,
   enroll: Mail,
   webhook: Globe,
+  webAgent: Bot,
 };
 
 /**

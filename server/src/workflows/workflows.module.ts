@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AgentsModule } from '../agents/agents.module';
 import { EnrichmentModule } from '../enrichment/enrichment.module';
 import { PeopleModule } from '../people/people.module';
 import { SequencesModule } from '../sequences/sequences.module';
@@ -10,7 +11,7 @@ import { WorkflowsRepository } from './workflows.repository';
 import { WorkflowsService } from './workflows.service';
 
 @Module({
-  imports: [PeopleModule, EnrichmentModule, SequencesModule],
+  imports: [PeopleModule, EnrichmentModule, SequencesModule, AgentsModule],
   controllers: [WorkflowsController],
   providers: [
     ...ALL_STEP_HANDLERS,
