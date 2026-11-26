@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { PeopleService } from './people/people.service';
 import { SequencesService } from './sequences/sequences.service';
 import { WorkflowsService } from './workflows/workflows.service';
 
@@ -11,6 +12,7 @@ export class SeedService implements OnApplicationBootstrap {
   private readonly logger = new Logger('Seed');
 
   constructor(
+    private readonly people: PeopleService,
     private readonly sequences: SequencesService,
     private readonly workflows: WorkflowsService,
   ) {}
@@ -81,6 +83,28 @@ export class SeedService implements OnApplicationBootstrap {
       steps: [{ type: 'update', fields: { stage: 'contacted' } }, { type: 'addTag', tag: 'replied' }],
     });
 
-    this.logger.log(`seeded sequence ${seq.id}, workflows ${wf.id} and ${replied.id}`);
+    // Created last, so the workflows above already exist and this fires them: the app
+    // opens with a person and a finished run rather than empty screens. Scores 35 on
+    // the seeded rules, which takes the If block's false path - segment "nurture", no
+    // enrollment. Job title and industry are blank on purpose; they are the gaps the
+    // Enrich and Web agent blocks exist to fill, and filling them is what moves the
+    // score past 50 on the next run.
+    const person = await this.people
+      .create({
+        email: 'vasanthkumar@hyring.com',
+        name: 'Vasanth',
+        company: 'Hyring',
+        companySize: 10,
+        location: 'Chennai',
+      })
+      .catch((err: Error) => {
+        this.logger.warn(`demo person not created: ${err.message}`);
+        return undefined;
+      });
+
+    this.logger.log(
+      `seeded sequence ${seq.id}, workflows ${wf.id} and ${replied.id}` +
+        (person ? `, person ${person.id}` : ''),
+    );
   }
 }
