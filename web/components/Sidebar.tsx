@@ -3,14 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GitBranch, House, Mail, Send, Users } from "lucide-react";
+import { GitBranch, House, Mail, Users } from "lucide-react";
 import { cx } from "@/lib/format";
 
 const NAV = [
   { href: "/", label: "Home", icon: House, exact: true },
   { href: "/people", label: "People", icon: Users },
   { href: "/sequences", label: "Sequences", icon: Mail },
-  { href: "/outbox", label: "Outbox", icon: Send },
   { href: "/workflows", label: "Workflows", icon: GitBranch },
 ];
 

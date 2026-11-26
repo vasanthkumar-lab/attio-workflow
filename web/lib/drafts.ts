@@ -4,15 +4,11 @@ import type {
 
 const EMAIL = /^[^@\s]+@[^@\s]+$/;
 
-/** Edit the sender once here and every new sequence starts with it. */
-export const DEFAULT_SENDER = "sales@yourcompany.com";
+
+export const DEFAULT_SENDER = "sales@hyring.com";
 
 // ----------------------------------------------------------------- sequences
 
-/**
- * A new sequence. The API needs a subject and a body on the first email, so the draft
- * starts with a short placeholder rather than an empty box.
- */
 export function blankSequence(): SequenceInput {
   return {
     name: "Untitled Sequence",

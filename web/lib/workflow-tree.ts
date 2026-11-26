@@ -104,17 +104,16 @@ export function moveStep(
   return { steps: nextSteps, path: [...listPath, target] };
 }
 
-export function replaceList(
+function replaceList(
   steps: WorkflowStep[],
   listPath: ListPath,
   list: WorkflowStep[],
 ): WorkflowStep[] {
   if (listPath.length === 0) return list;
   const [i, branch, ...rest] = listPath;
-  return steps.map((node, idx) => {
-    if (idx !== i) return node;
-    return withBranch(node, branch, replaceList(branchOf(node, branch), rest, list));
-  });
+  return steps.map((node, idx) =>
+    idx === i ? withBranch(node, branch, replaceList(branchOf(node, branch), rest, list)) : node,
+  );
 }
 
 /** Total number of blocks, branches included - shown on the workflow list. */

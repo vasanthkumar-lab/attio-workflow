@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Person } from './person.entity';
 
-/**
- * In-memory storage. Replace the method bodies with Prisma/TypeORM calls to use Postgres;
- * nothing else in the app needs to change.
- */
+/** In-memory storage. Everything is lost when the process restarts. */
 @Injectable()
 export class PeopleRepository {
   private readonly rows = new Map<string, Person>();

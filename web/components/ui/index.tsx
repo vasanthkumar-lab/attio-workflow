@@ -161,14 +161,18 @@ export function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cx(
-        "relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50",
-        checked ? "bg-accent" : "bg-line-strong",
+        "relative h-5 w-9 shrink-0 rounded-full border transition-colors disabled:opacity-50",
+        checked
+          ? "border-accent bg-accent"
+          : "border-line-strong bg-line-strong hover:bg-faint",
       )}
     >
+      {/* Positioned with `left` rather than a transform: the knob is 16px in a 36px track,
+          so the two stops are 2px and 18px and can never overhang the edge. */}
       <span
         className={cx(
-          "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-          checked ? "translate-x-4.5" : "translate-x-0.5",
+          "absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-sm transition-[left] duration-150",
+          checked ? "left-[18px]" : "left-[2px]",
         )}
       />
     </button>

@@ -5,16 +5,28 @@ import { EventName } from '../common/events';
  * Workflows are stored as JSON, so they can be built from a UI (like Attio's builder)
  * and saved through the API without code changes.
  */
-export type WorkflowStep =
+/**
+ * Where a block sits on the builder canvas. Stored so a layout survives a reload, but
+ * never read by the engine: execution order comes from the order of the steps array.
+ */
+export interface CanvasPosition {
+  x: number;
+  y: number;
+}
+
+export type WorkflowStep = { position?: CanvasPosition } & (
   | { type: 'enrich' }
   | { type: 'score'; rules: { condition: Condition; points: number }[] }
   | { type: 'if'; label?: string; condition: Condition; then: WorkflowStep[]; else?: WorkflowStep[] }
   | { type: 'update'; fields: Record<string, unknown> }
   | { type: 'addTag'; tag: string }
   | { type: 'enroll'; sequenceId: string }
-  | { type: 'webhook'; url: string }; // e.g. Slack incoming webhook to alert the team
+  | { type: 'webhook'; url: string } // e.g. Slack incoming webhook to alert the team
+);
 
 export interface WorkflowTrigger {
+  /** Canvas position of the trigger block. Visual only. */
+  position?: CanvasPosition;
   event: EventName | 'manual';
   /** person.updated only: run only when one of these fields changed. */
   fields?: string[];

@@ -1,16 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Blocks, ChevronDown, Crosshair, Hand, Minus, MousePointer2, Plus, Target, Zap,
+  Blocks, ChevronDown, Crosshair, Hand, MousePointer2, Plus, Target, TriangleAlert, Zap,
 } from "lucide-react";
 import { BLOCK_ICONS, BlockPicker } from "./BlockLibrary";
 import { blockSummary } from "./blockSummary";
 import { IconButton, Menu, MenuItem } from "@/components/ui";
 import { blockDef, triggerDef, TONE_CLASSES } from "@/lib/catalog";
 import { describeCondition } from "@/lib/conditions";
+import { stepProblem } from "@/lib/drafts";
 import { cx } from "@/lib/format";
-import { insertStep, pathKey, samePath, type ListPath, type StepPath } from "@/lib/workflow-tree";
+import {
+  collectPositions, elbowPath, layoutWorkflow, NODE_H, NODE_W, TRIGGER_KEY,
+  type Edge, type Placed,
+} from "@/lib/workflow-layout";
+import {
+  getStep, insertStep, pathKey, samePath, updateStep,
+  type ListPath, type StepPath,
+} from "@/lib/workflow-tree";
 import type { Sequence, WorkflowInput, WorkflowStep } from "@/lib/types";
 
 export type Selection =
@@ -20,14 +28,18 @@ export type Selection =
 
 type Tool = "pointer" | "hand";
 
-const MIN_ZOOM = 0.4;
+const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2;
-const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5];
+const DRAG_THRESHOLD = 4;
 
 /**
- * The builder canvas. Pans by dragging (hand tool, middle mouse, or space held),
- * zooms with the toolbar or ctrl/cmd + wheel, and lays blocks out top to bottom with
- * If blocks splitting into a True and a False column.
+ * The builder canvas. Blocks sit at real coordinates and can be dragged anywhere;
+ * anything without a saved position falls back to an auto layout computed from the
+ * step tree. Edges are rounded elbows between the ports.
+ *
+ * Dragging a block is visual only - the order the engine runs them in comes from the
+ * steps array, not from where they sit. Use Move up / Move down to change order.
  */
 export function WorkflowCanvas({
   draft,
@@ -46,26 +58,72 @@ export function WorkflowCanvas({
   const [tool, setTool] = useState<Tool>("pointer");
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
-  const [adding, setAdding] = useState<{ listPath: ListPath; index: number }>();
+  const [adding, setAdding] = useState<{ listPath: ListPath; index: number; x: number; y: number }>();
+
+  /** Live position while a node is dragged, before it is written to the draft. */
+  const [nodeDrag, setNodeDrag] = useState<{ key: string; x: number; y: number }>();
 
   const viewportRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  type DragOrigin = { px: number; py: number; x: number; y: number };
-  const dragFrom = useRef<DragOrigin | undefined>(undefined);
+  const panFrom = useRef<{ px: number; py: number; x: number; y: number } | undefined>(undefined);
 
   const grabbing = tool === "hand" || spaceHeld;
+
+  /**
+   * The in-flight node drag. Everything lives in the ref rather than state because the
+   * final position is read on pointerup: reading it from state would race the last
+   * render and silently drop the move.
+   */
+  const dragRef = useRef<
+    { key: string; px: number; py: number; x: number; y: number; moved: boolean } | undefined
+  >(undefined);
+
+  // Read by the window-level drag listeners, which are not recreated per render.
+  const zoomRef = useRef(view.zoom);
+  zoomRef.current = view.zoom;
+  const grabbingRef = useRef(grabbing);
+  grabbingRef.current = grabbing;
+
+  // ------------------------------------------------------------------ layout
+
+  const layout = useMemo(() => {
+    const positions = collectPositions(draft.steps);
+    if (draft.trigger.position) positions.set(TRIGGER_KEY, draft.trigger.position);
+    if (nodeDrag) positions.set(nodeDrag.key, { x: nodeDrag.x, y: nodeDrag.y });
+    return layoutWorkflow(draft.steps, positions);
+  }, [draft.steps, draft.trigger.position, nodeDrag]);
+
+  const writePosition = useCallback(
+    (raw: string, at: { x: number; y: number }) => {
+      const key = raw;
+      // Keep coordinates non-negative so the content box never needs re-origining,
+      // which is what made dragged blocks drift.
+      const position = { x: Math.round(Math.max(0, at.x)), y: Math.round(Math.max(0, at.y)) };
+      if (key === TRIGGER_KEY) {
+        onChange({ ...draft, trigger: { ...draft.trigger, position } });
+        return;
+      }
+      const path = key.split(".").map((s) => (s === "then" || s === "else" ? s : Number(s)));
+      const step = getStep(draft.steps, path as StepPath);
+      if (!step) return;
+      onChange({
+        ...draft,
+        steps: updateStep(draft.steps, path as StepPath, { ...step, position } as WorkflowStep),
+      });
+    },
+    [draft, onChange],
+  );
 
   // --------------------------------------------------------------- shortcuts
 
   useEffect(() => {
     const isTyping = (el: EventTarget | null) => {
       const node = el as HTMLElement | null;
-      if (!node) return false;
-      return (
-        node.tagName === "INPUT" ||
-        node.tagName === "TEXTAREA" ||
-        node.tagName === "SELECT" ||
-        node.isContentEditable
+      return Boolean(
+        node &&
+          (node.tagName === "INPUT" ||
+            node.tagName === "TEXTAREA" ||
+            node.tagName === "SELECT" ||
+            node.isContentEditable),
       );
     };
 
@@ -74,16 +132,14 @@ export function WorkflowCanvas({
       if (e.code === "Space") {
         e.preventDefault();
         setSpaceHeld(true);
-      } else if (e.key === "v" || e.key === "V") {
-        setTool("pointer");
-      } else if (e.key === "h" || e.key === "H") {
-        setTool("hand");
-      } else if (e.key === "b" || e.key === "B") {
+      } else if (e.key === "v" || e.key === "V") setTool("pointer");
+      else if (e.key === "h" || e.key === "H") setTool("hand");
+      else if (e.key === "b" || e.key === "B") {
         e.preventDefault();
-        setAdding({ listPath: [], index: draft.steps.length });
+        openPickerAtEnd();
       } else if ((e.metaKey || e.ctrlKey) && e.key === "0") {
         e.preventDefault();
-        setView({ x: 0, y: 0, zoom: 1 });
+        setView((v) => ({ ...v, zoom: 1 }));
       }
     };
     const up = (e: KeyboardEvent) => {
@@ -96,51 +152,92 @@ export function WorkflowCanvas({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [draft.steps.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.steps.length, layout]);
 
-  // ------------------------------------------------------------- pan handling
+  // -------------------------------------------------------------- pan & zoom
 
   const onPointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-no-pan]")) return;
+
     const middleClick = e.button === 1;
-    // With the hand tool or middle mouse you can drag anywhere. With the select tool you
-    // can still drag the canvas, as long as the press did not land on a node or a control.
-    if (!grabbing && !middleClick) {
-      const target = e.target as HTMLElement;
-      const onControl = target.closest("button, input, select, textarea, a, [data-no-pan]");
-      if (onControl) return;
-    }
+    if (!grabbing && !middleClick && target.closest("button, input, select, textarea, a")) return;
+
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    dragFrom.current = { px: e.clientX, py: e.clientY, x: view.x, y: view.y };
+    panFrom.current = { px: e.clientX, py: e.clientY, x: view.x, y: view.y };
     setPanning(true);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const from = dragFrom.current;
+    const from = panFrom.current;
     if (!from) return;
-    setView((v) => ({
-      ...v,
-      x: from.x + (e.clientX - from.px),
-      y: from.y + (e.clientY - from.py),
-    }));
+    setView((v) => ({ ...v, x: from.x + (e.clientX - from.px), y: from.y + (e.clientY - from.py) }));
   };
 
-  const endPan = (e: React.PointerEvent) => {
-    if (!dragFrom.current) return;
-    dragFrom.current = undefined;
-    setPanning(false);
-    if ((e.currentTarget as HTMLElement).hasPointerCapture?.(e.pointerId)) {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  const endPointer = (e: React.PointerEvent) => {
+    if (panFrom.current) {
+      panFrom.current = undefined;
+      setPanning(false);
     }
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
   };
 
-  // Wheel scrolls the canvas; ctrl/cmd + wheel zooms toward the cursor.
+  /**
+   * Starts a node drag. Listeners go on the window rather than the node so the drag
+   * survives the re-renders that move the node out from under the cursor.
+   */
+  const beginNodeDrag = useCallback(
+    (e: React.PointerEvent, node: Placed, onClick: () => void) => {
+      if (grabbingRef.current || e.button !== 0) return;
+      e.stopPropagation();
+
+      dragRef.current = {
+        key: node.key, px: e.clientX, py: e.clientY, x: node.x, y: node.y, moved: false,
+      };
+
+      const move = (ev: PointerEvent) => {
+        const d = dragRef.current;
+        if (!d) return;
+        if (!d.moved && Math.hypot(ev.clientX - d.px, ev.clientY - d.py) <= DRAG_THRESHOLD) return;
+        d.moved = true;
+        d.x = d.x + (ev.clientX - d.px) / zoomRef.current;
+        d.y = d.y + (ev.clientY - d.py) / zoomRef.current;
+        d.px = ev.clientX;
+        d.py = ev.clientY;
+        setNodeDrag({ key: d.key, x: d.x, y: d.y });
+      };
+
+      const finish = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", finish);
+        window.removeEventListener("pointercancel", finish);
+        const d = dragRef.current;
+        dragRef.current = undefined;
+        setNodeDrag(undefined);
+        if (!d) return;
+        if (d.moved) writePosition(d.key, { x: d.x, y: d.y });
+        else onClick();
+      };
+
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", finish);
+      window.addEventListener("pointercancel", finish);
+    },
+    [writePosition],
+  );
+
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
 
     const onWheel = (e: WheelEvent) => {
+      // Panels floating over the canvas scroll themselves.
+      if ((e.target as HTMLElement | null)?.closest("[data-no-pan]")) return;
       e.preventDefault();
+
       if (e.ctrlKey || e.metaKey) {
         const rect = viewport.getBoundingClientRect();
         const cx0 = e.clientX - rect.left;
@@ -148,7 +245,6 @@ export function WorkflowCanvas({
         setView((v) => {
           const zoom = clamp(v.zoom * (e.deltaY < 0 ? 1.08 : 0.92), MIN_ZOOM, MAX_ZOOM);
           const ratio = zoom / v.zoom;
-          // Keep the point under the cursor fixed while scaling.
           return { zoom, x: cx0 - (cx0 - v.x) * ratio, y: cy0 - (cy0 - v.y) * ratio };
         });
       } else {
@@ -173,23 +269,64 @@ export function WorkflowCanvas({
     });
   }, []);
 
-  /** Centres the blocks in the viewport, the way Attio's Organize blocks does. */
-  const organize = useCallback(() => {
+  /** Fits the whole graph in view - the "zoom to fit" half of Organize blocks. */
+  const fitToView = useCallback(() => {
     const viewport = viewportRef.current;
-    const content = contentRef.current;
-    if (!viewport || !content) return;
+    if (!viewport) return;
     const vw = viewport.clientWidth;
-    const cw = content.offsetWidth;
-    setView((v) => ({ ...v, x: (vw - cw * v.zoom) / 2, y: 32 }));
-  }, []);
+    const vh = viewport.clientHeight;
+    const zoom = clamp(Math.min(vw / layout.width, vh / layout.height, 1), MIN_ZOOM, MAX_ZOOM);
+    setView({
+      zoom,
+      x: (vw - layout.width * zoom) / 2,
+      y: Math.max(16, (vh - layout.height * zoom) / 2),
+    });
+  }, [layout.width, layout.height]);
 
+  /** Drops every saved position so the auto layout takes over again, then refits. */
+  const organize = useCallback(() => {
+    const strip = (steps: WorkflowStep[]): WorkflowStep[] =>
+      steps.map((step) => {
+        const { position: _drop, ...rest } = step as WorkflowStep & { position?: unknown };
+        const cleaned = rest as WorkflowStep;
+        if (cleaned.type === "if") {
+          return { ...cleaned, then: strip(cleaned.then), else: strip(cleaned.else ?? []) };
+        }
+        return cleaned;
+      });
+
+    const { position: _t, ...trigger } = draft.trigger;
+    onChange({ ...draft, trigger, steps: strip(draft.steps) });
+  }, [draft, onChange]);
+
+  const fitted = useRef(false);
   useEffect(() => {
-    organize();
-    // Centre once, on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (fitted.current) return;
+    fitted.current = true;
+    fitToView();
+  }, [fitToView]);
 
   // ------------------------------------------------------------------ adding
+
+  const openPickerAfter = (node: Placed) => {
+    if (!node.path) {
+      setAdding({ listPath: [], index: 0, x: node.x + NODE_W + 48, y: node.y });
+      return;
+    }
+    const listPath = node.path.slice(0, -1);
+    const index = (node.path[node.path.length - 1] as number) + 1;
+    setAdding({ listPath, index, x: node.x + NODE_W + 48, y: node.y });
+  };
+
+  const openPickerAtEnd = () => {
+    const last = layout.nodes[layout.nodes.length - 1] ?? layout.byKey.get(TRIGGER_KEY);
+    setAdding({
+      listPath: [],
+      index: draft.steps.length,
+      x: (last?.x ?? 0) + NODE_W + 48,
+      y: last?.y ?? 0,
+    });
+  };
 
   const addStep = (step: WorkflowStep) => {
     if (!adding) return;
@@ -206,10 +343,9 @@ export function WorkflowCanvas({
         ref={viewportRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={endPan}
-        onPointerCancel={endPan}
+        onPointerUp={endPointer}
+        onPointerCancel={endPointer}
         onClick={(e) => {
-          // A click on empty canvas clears the selection, like Attio.
           if (e.target === e.currentTarget && !panning) onSelect({ kind: "none" });
         }}
         className={cx(
@@ -218,39 +354,77 @@ export function WorkflowCanvas({
         )}
       >
         <div
-          ref={contentRef}
           style={{
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
             transformOrigin: "0 0",
+            width: layout.width,
+            height: layout.height,
           }}
-          className="absolute left-0 top-0 w-[460px] pb-24"
+          className="absolute left-0 top-0"
         >
-          <div className="flex flex-col items-stretch px-4 pt-2">
-            <TriggerNode
-              label={trigger.label}
-              description={
-                draft.trigger.condition
-                  ? describeCondition(draft.trigger.condition)
-                  : draft.trigger.fields?.length
-                    ? `When ${draft.trigger.fields.join(", ")} changes`
-                    : trigger.description
-              }
-              selected={selected.kind === "trigger"}
-              onClick={() => onSelect({ kind: "trigger" })}
-            />
+          <EdgeLayer edges={layout.edges} byKey={layout.byKey} width={layout.width} height={layout.height} />
 
-            <StepList
-              steps={draft.steps}
-              listPath={[]}
-              selected={selected}
-              onSelect={onSelect}
-              adding={adding}
-              onAdd={(listPath, index) => setAdding({ listPath, index })}
-              onPick={addStep}
-              onCancelAdd={() => setAdding(undefined)}
-              sequencesById={sequencesById}
-            />
-          </div>
+          {layout.nodes.map((node) => {
+            const isTrigger = node.key === TRIGGER_KEY;
+            const step = node.path ? getStep(draft.steps, node.path) : undefined;
+            if (!isTrigger && !step) return null;
+
+            const def = step ? blockDef(step.type) : undefined;
+            const Icon = step ? BLOCK_ICONS[step.type] : Zap;
+            const isSelected = isTrigger
+              ? selected.kind === "trigger"
+              : selected.kind === "step" && samePath(selected.path, node.path!);
+
+            return (
+              <NodeCard
+                key={node.key}
+                node={node}
+                icon={<Icon size={14} />}
+                toneChip={def ? TONE_CLASSES[def.tone].chip : "bg-accent-soft text-accent-ink"}
+                badge={isTrigger ? "Trigger" : undefined}
+                title={isTrigger ? trigger.label : def!.label}
+                summary={
+                  isTrigger
+                    ? draft.trigger.condition
+                      ? describeCondition(draft.trigger.condition)
+                      : draft.trigger.fields?.length
+                        ? `When ${draft.trigger.fields.join(", ")} changes`
+                        : trigger.description
+                    : blockSummary(step!, sequencesById)
+                }
+                problem={step ? stepProblem(step) : undefined}
+                selected={isSelected}
+                dragging={nodeDrag?.key === node.key}
+                onPointerDown={(e) =>
+                  beginNodeDrag(e, node, () =>
+                    onSelect(isTrigger ? { kind: "trigger" } : { kind: "step", path: node.path! }),
+                  )
+                }
+                onAdd={() => openPickerAfter(node)}
+              />
+            );
+          })}
+
+          {layout.ghosts.map((ghost) => (
+            <button
+              key={`ghost-${pathKey(ghost.listPath)}`}
+              type="button"
+              style={{ left: ghost.x, top: ghost.y, width: NODE_W, height: NODE_H }}
+              onClick={() =>
+                setAdding({ listPath: ghost.listPath, index: 0, x: ghost.x, y: ghost.y })
+              }
+              className="absolute flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong bg-surface/40 text-[12px] font-medium text-muted transition-colors hover:border-accent hover:bg-accent-soft/30 hover:text-accent-ink"
+            >
+              <Plus size={14} />
+              Add block
+            </button>
+          ))}
+
+          {adding && (
+            <div className="absolute z-20" style={{ left: adding.x, top: adding.y }} data-no-pan>
+              <BlockPicker onPick={addStep} onCancel={() => setAdding(undefined)} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -259,9 +433,12 @@ export function WorkflowCanvas({
         tool={tool}
         onTool={setTool}
         onZoom={setZoom}
-        onReset={() => setView({ x: 0, y: 0, zoom: 1 })}
-        onOrganize={organize}
-        onAddBlock={() => setAdding({ listPath: [], index: draft.steps.length })}
+        onFit={fitToView}
+        onOrganize={() => {
+          organize();
+          setTimeout(fitToView, 0);
+        }}
+        onAddBlock={openPickerAtEnd}
       />
     </div>
   );
@@ -269,26 +446,180 @@ export function WorkflowCanvas({
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
+// --------------------------------------------------------------------- edges
+
+function EdgeLayer({
+  edges, byKey, width, height,
+}: {
+  edges: Edge[];
+  byKey: Map<string, Placed>;
+  width: number;
+  height: number;
+}) {
+  return (
+    <svg
+      className="pointer-events-none absolute left-0 top-0 text-line-strong"
+      width={width}
+      height={height}
+      aria-hidden="true"
+    >
+      <defs>
+        <marker
+          id="wf-arrow"
+          viewBox="0 0 8 8"
+          refX="6"
+          refY="4"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 1 L 6 4 L 0 7 z" fill="currentColor" />
+        </marker>
+      </defs>
+
+      {edges.map((edge) => {
+        const from = byKey.get(edge.from);
+        const to = byKey.get(edge.to);
+        if (!from || !to) return null;
+
+        const midX = (from.x + to.x) / 2 + NODE_W / 2;
+        const midY = (from.y + NODE_H + to.y) / 2;
+
+        return (
+          <g key={edge.id}>
+            <path
+              d={elbowPath(from, to)}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              markerEnd="url(#wf-arrow)"
+            />
+            {edge.label && (
+              <>
+                <rect
+                  x={midX - 20}
+                  y={midY - 9}
+                  width="40"
+                  height="18"
+                  rx="5"
+                  className={edge.label === "True" ? "fill-good-soft" : "fill-raised"}
+                />
+                <text
+                  x={midX}
+                  y={midY + 4}
+                  textAnchor="middle"
+                  className={cx(
+                    "text-[10px] font-semibold",
+                    edge.label === "True" ? "fill-good" : "fill-muted",
+                  )}
+                >
+                  {edge.label}
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// --------------------------------------------------------------------- nodes
+
+function NodeCard({
+  node, icon, toneChip, badge, title, summary, problem, selected, dragging, onPointerDown, onAdd,
+}: {
+  node: Placed;
+  icon: React.ReactNode;
+  toneChip: string;
+  badge?: string;
+  title: string;
+  summary: string;
+  problem?: string;
+  selected: boolean;
+  dragging: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+  onAdd: () => void;
+}) {
+
+  return (
+    <div
+      className="group absolute"
+      style={{ left: node.x, top: node.y, width: NODE_W, height: NODE_H }}
+    >
+      {badge && (
+        <span className="absolute -top-6 left-0 inline-flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent-ink">
+          <Target size={11} />
+          {badge}
+        </span>
+      )}
+
+      <div
+        role="button"
+        tabIndex={-1}
+        onPointerDown={onPointerDown}
+        className={cx(
+          "h-full cursor-grab rounded-xl border bg-surface px-3 py-2.5 shadow-card transition-colors active:cursor-grabbing",
+          dragging && "opacity-80 shadow-pop",
+          selected ? "border-accent ring-2 ring-accent/25" : "border-line hover:border-line-strong",
+        )}
+      >
+        <div className="flex items-start gap-2.5">
+          <span className={cx("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg", toneChip)}>
+            {icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold text-ink">{title}</p>
+            <p className="mt-0.5 line-clamp-1 text-[12px] leading-snug text-muted">{summary}</p>
+          </div>
+          {problem && (
+            <span title={problem} className="mt-0.5 shrink-0 text-warn">
+              <TriangleAlert size={14} />
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Output port, and the + that inserts the next block after this one. */}
+      <span
+        className={cx(
+          "pointer-events-none absolute -bottom-[5px] left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 bg-surface",
+          selected ? "border-accent" : "border-line-strong",
+        )}
+      />
+      <button
+        type="button"
+        onClick={onAdd}
+        title="Add a block after this one"
+        aria-label="Add a block after this one"
+        className="absolute -right-9 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md bg-accent text-white opacity-0 shadow-pop transition-opacity hover:bg-accent-ink group-hover:opacity-100"
+      >
+        <Plus size={14} />
+      </button>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------- toolbar
 
 function Toolbar({
-  zoom, tool, onTool, onZoom, onReset, onOrganize, onAddBlock,
+  zoom, tool, onTool, onZoom, onFit, onOrganize, onAddBlock,
 }: {
   zoom: number;
   tool: Tool;
   onTool: (t: Tool) => void;
   onZoom: (z: number) => void;
-  onReset: () => void;
+  onFit: () => void;
   onOrganize: () => void;
   onAddBlock: () => void;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-line-strong bg-surface p-1 shadow-pop">
+    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-line-strong bg-surface p-1 shadow-pop" data-no-pan>
         <Menu
           align="left"
           placement="above"
-          className="min-w-40"
+          className="min-w-44"
           trigger={({ toggle }) => (
             <button
               type="button"
@@ -306,7 +637,7 @@ function Toolbar({
               {Math.round(z * 100)}%
             </MenuItem>
           ))}
-          <MenuItem onClick={onReset}>Reset to 100%</MenuItem>
+          <MenuItem onClick={onFit}>Zoom to fit</MenuItem>
         </Menu>
 
         <span className="mx-0.5 h-5 w-px bg-line" />
@@ -320,7 +651,7 @@ function Toolbar({
         </ToolButton>
         <ToolButton
           active={tool === "pointer"}
-          label="Select tool (V)"
+          label="Select tool - drag a block to move it (V)"
           onClick={() => onTool("pointer")}
         >
           <MousePointer2 size={15} />
@@ -340,7 +671,11 @@ function Toolbar({
           </kbd>
         </button>
 
-        <IconButton label="Organize blocks - recentre the canvas" onClick={onOrganize} className="h-8 w-8">
+        <IconButton
+          label="Organize blocks - clear manual positions and tidy the layout"
+          onClick={onOrganize}
+          className="h-8 w-8"
+        >
           <Target size={15} />
         </IconButton>
       </div>
@@ -370,230 +705,5 @@ function ToolButton({
     >
       {children}
     </button>
-  );
-}
-
-// --------------------------------------------------------------------- nodes
-
-function TriggerNode({
-  label, description, selected, onClick,
-}: {
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-stretch">
-      <span className="mb-1 inline-flex w-fit items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent-ink">
-        <Target size={11} />
-        Trigger
-      </span>
-      <NodeCard
-        icon={<Zap size={14} />}
-        toneChip="bg-accent-soft text-accent-ink"
-        title={label}
-        summary={description}
-        selected={selected}
-        onClick={onClick}
-      />
-    </div>
-  );
-}
-
-function NodeCard({
-  icon, toneChip, title, summary, selected, onClick,
-}: {
-  icon: React.ReactNode;
-  toneChip: string;
-  title: string;
-  summary: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cx(
-        "relative rounded-xl border bg-surface px-3 py-2.5 text-left shadow-card transition-colors",
-        selected
-          ? "border-accent ring-2 ring-accent/25"
-          : "border-line hover:border-line-strong",
-      )}
-    >
-      <span className="flex items-start gap-2.5">
-        <span className={cx("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg", toneChip)}>
-          {icon}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-semibold text-ink">{title}</span>
-          <span className="mt-0.5 block break-words text-[12px] leading-snug text-muted">
-            {summary}
-          </span>
-        </span>
-      </span>
-
-      {/* The output port, like the circle you drag from in Attio. */}
-      <span
-        className={cx(
-          "absolute -bottom-[5px] left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 bg-surface",
-          selected ? "border-accent" : "border-line-strong",
-        )}
-      />
-    </button>
-  );
-}
-
-/** A vertical connector with an arrowhead at the bottom. */
-function Connector({ height = 28 }: { height?: number }) {
-  return (
-    <span
-      className="relative mx-auto block w-px bg-line-strong"
-      style={{ height }}
-      aria-hidden="true"
-    >
-      <span className="absolute -bottom-px left-1/2 h-0 w-0 -translate-x-1/2 border-x-[4px] border-t-[6px] border-x-transparent border-t-line-strong" />
-    </span>
-  );
-}
-
-function StepList({
-  steps, listPath, selected, onSelect, adding, onAdd, onPick, onCancelAdd, sequencesById, branchLabel,
-}: {
-  steps: WorkflowStep[];
-  listPath: ListPath;
-  selected: Selection;
-  onSelect: (selection: Selection) => void;
-  adding?: { listPath: ListPath; index: number };
-  onAdd: (listPath: ListPath, index: number) => void;
-  onPick: (step: WorkflowStep) => void;
-  onCancelAdd: () => void;
-  sequencesById: Map<string, Sequence>;
-  branchLabel?: "True" | "False";
-}) {
-  const addingHere =
-    adding && pathKey(adding.listPath) === pathKey(listPath) ? adding.index : undefined;
-
-  return (
-    <div className="flex flex-col items-stretch">
-      {steps.map((step, index) => {
-        const path = [...listPath, index];
-        const isSelected = selected.kind === "step" && samePath(selected.path, path);
-        const def = blockDef(step.type);
-        const Icon = BLOCK_ICONS[step.type];
-
-        return (
-          <div key={pathKey(path)} className="flex flex-col items-stretch">
-            {addingHere === index && (
-              <>
-                <Connector />
-                <div className="mx-auto" data-no-pan>
-                  <BlockPicker onPick={onPick} onCancel={onCancelAdd} />
-                </div>
-              </>
-            )}
-
-            <Connector />
-            <NodeCard
-              icon={<Icon size={14} />}
-              toneChip={TONE_CLASSES[def.tone].chip}
-              title={def.label}
-              summary={blockSummary(step, sequencesById)}
-              selected={isSelected}
-              onClick={() => onSelect({ kind: "step", path })}
-            />
-
-            {step.type === "if" && (
-              <Branches
-                step={step}
-                path={path}
-                selected={selected}
-                onSelect={onSelect}
-                adding={adding}
-                onAdd={onAdd}
-                onPick={onPick}
-                onCancelAdd={onCancelAdd}
-                sequencesById={sequencesById}
-              />
-            )}
-          </div>
-        );
-      })}
-
-      {addingHere === steps.length ? (
-        <>
-          <Connector />
-          <div className="mx-auto" data-no-pan>
-            <BlockPicker onPick={onPick} onCancel={onCancelAdd} />
-          </div>
-        </>
-      ) : (
-        <>
-          <Connector />
-          <button
-            type="button"
-            onClick={() => onAdd(listPath, steps.length)}
-            className="mx-auto inline-flex items-center gap-1.5 rounded-lg border border-dashed border-line-strong bg-surface/60 px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-accent hover:bg-accent-soft/40 hover:text-accent-ink"
-          >
-            <Plus size={13} />
-            {steps.length === 0 ? `Add a block to ${branchLabel ?? "this path"}` : "Add block"}
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function Branches({
-  step, path, selected, onSelect, adding, onAdd, onPick, onCancelAdd, sequencesById,
-}: {
-  step: Extract<WorkflowStep, { type: "if" }>;
-  path: StepPath;
-  selected: Selection;
-  onSelect: (selection: Selection) => void;
-  adding?: { listPath: ListPath; index: number };
-  onAdd: (listPath: ListPath, index: number) => void;
-  onPick: (step: WorkflowStep) => void;
-  onCancelAdd: () => void;
-  sequencesById: Map<string, Sequence>;
-}) {
-  return (
-    <div className="relative mt-6 grid grid-cols-2 gap-5">
-      <span className="absolute -top-6 left-1/2 h-3 w-px -translate-x-1/2 bg-line-strong" />
-      <span className="absolute -top-3 left-1/4 right-1/4 h-px bg-line-strong" />
-      <span className="absolute -top-3 left-1/4 h-3 w-px bg-line-strong" />
-      <span className="absolute -top-3 right-1/4 h-3 w-px bg-line-strong" />
-
-      {(["then", "else"] as const).map((branch) => {
-        const label = branch === "then" ? "True" : "False";
-        return (
-          <div key={branch} className="flex min-w-0 flex-col items-stretch">
-            <span
-              className={cx(
-                "mx-auto rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                branch === "then"
-                  ? "bg-good-soft text-good"
-                  : "bg-raised text-muted ring-1 ring-line",
-              )}
-            >
-              {label}
-            </span>
-            <StepList
-              steps={branch === "then" ? step.then : step.else ?? []}
-              listPath={[...path, branch]}
-              selected={selected}
-              onSelect={onSelect}
-              adding={adding}
-              onAdd={onAdd}
-              onPick={onPick}
-              onCancelAdd={onCancelAdd}
-              sequencesById={sequencesById}
-              branchLabel={label}
-            />
-          </div>
-        );
-      })}
-    </div>
   );
 }

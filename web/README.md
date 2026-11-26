@@ -15,15 +15,15 @@ The API runs on port 3000, the UI on 3001. From the repo root:
 ```bash
 npm install          # the root runner
 npm run setup        # installs server/ and web/
-cp server/.env.example server/.env    # optional, see Email below
 
 npm run demo         # both, with FAST_DEMO: a two-step sequence finishes in seconds
 # or
 npm run dev          # both, with real timings: business days and a 9-5 sending window
 ```
 
-Open <http://localhost:3001>. The UI is ready in about a second while Nest is still
-compiling, so the first few reads retry until the API answers.
+Open <http://localhost:3001>. Nothing else to install - no database, no Docker. The API
+stores everything in memory and `SEED=1` creates the sample sequence and workflows on
+boot, so the app has data the moment it starts.
 
 To run them separately instead:
 
@@ -34,8 +34,8 @@ cd web    && npm run dev
 
 ### If startup fails
 
-**`EADDRINUSE: address already in use :::3001`** (or `:::3000`) — an earlier run is still
-holding the port. `concurrently` kills the other process when one fails, so both stop.
+**`EADDRINUSE: address already in use :::3001`** (or `:::3000`) - an earlier run is still
+holding the port. `concurrently` stops the other process when one fails, so both stop.
 Free the port and start again:
 
 ```powershell
@@ -51,8 +51,8 @@ lsof -ti :3000,:3001 | xargs kill -9
 ```
 
 **`Failed to proxy http://localhost:3000/... ECONNREFUSED`** in the first second or two is
-expected and harmless. Next is ready in about a second while Nest is still compiling; the
-UI retries those reads until the API answers.
+expected. Next is ready in about a second while Nest is still compiling; the UI retries
+those reads until the API answers.
 
 ### How the UI reaches the API
 
@@ -146,8 +146,8 @@ follows up, and a reply ends it.
 
 ## Notes and limits
 
-- The API keeps everything in memory, so restarting the server clears people, sequences,
-  workflows and run history. `SEED=1` puts the samples back.
+- The API keeps everything in memory, so restarting it clears people, sequences,
+  workflows and run history. `SEED=1` puts the samples back on the next boot.
 - The **Mark as replied** action stands in for an inbox sync. In production you would call
   `POST /enrollments/:id/reply` from a Gmail push or Microsoft Graph subscription.
 - There is no sign-in. Every screen acts as a single implied user.

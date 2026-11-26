@@ -143,14 +143,29 @@ export interface SequenceStats {
 
 export type ScoreRule = { condition: Condition; points: number };
 
-export type WorkflowStep =
-  | { type: "enrich" }
-  | { type: "score"; rules: ScoreRule[] }
-  | { type: "if"; label?: string; condition: Condition; then: WorkflowStep[]; else?: WorkflowStep[] }
-  | { type: "update"; fields: Record<string, unknown> }
-  | { type: "addTag"; tag: string }
-  | { type: "enroll"; sequenceId: string }
-  | { type: "webhook"; url: string };
+export interface CanvasPosition {
+  x: number;
+  y: number;
+}
+
+/**
+ * Where the block sits on the builder canvas. Purely visual - execution order comes from
+ * the order of the steps array, never from the coordinates.
+ */
+export interface Positioned {
+  position?: CanvasPosition;
+}
+
+export type WorkflowStep = Positioned &
+  (
+    | { type: "enrich" }
+    | { type: "score"; rules: ScoreRule[] }
+    | { type: "if"; label?: string; condition: Condition; then: WorkflowStep[]; else?: WorkflowStep[] }
+    | { type: "update"; fields: Record<string, unknown> }
+    | { type: "addTag"; tag: string }
+    | { type: "enroll"; sequenceId: string }
+    | { type: "webhook"; url: string }
+  );
 
 export type StepType = WorkflowStep["type"];
 
@@ -159,7 +174,7 @@ export type TriggerEvent =
   | "enrollment.replied" | "enrollment.completed"
   | "manual";
 
-export interface WorkflowTrigger {
+export interface WorkflowTrigger extends Positioned {
   event: TriggerEvent;
   fields?: string[];
   condition?: Condition;
