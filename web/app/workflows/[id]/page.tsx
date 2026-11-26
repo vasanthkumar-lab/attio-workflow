@@ -10,12 +10,12 @@ import {
 import { WorkflowCanvas, type Selection } from "@/components/workflows/WorkflowCanvas";
 import { BlockInspector, TriggerInspector } from "@/components/workflows/BlockInspector";
 import { WorkflowOverview, WorkflowSettings } from "@/components/workflows/WorkflowPanels";
-import { RunList } from "@/components/workflows/RunList";
+import { RunList, RunLog } from "@/components/workflows/RunList";
 import { api } from "@/lib/api";
 import { useAction, useInterval, useQuery } from "@/lib/hooks";
 import { toWorkflowInput, validateWorkflow } from "@/lib/drafts";
 import { triggerDef } from "@/lib/catalog";
-import { displayName } from "@/lib/format";
+import { displayName, pluralize } from "@/lib/format";
 import { getList, getStep, moveStep, removeStep, updateStep } from "@/lib/workflow-tree";
 import type { WorkflowInput, WorkflowRun } from "@/lib/types";
 
@@ -410,26 +410,14 @@ function TriggerDialog({
             <Badge tone="warn">Skipped</Badge> {result.skipped}
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="text-[13px] text-ink">
               <Badge tone={result.status === "failed" ? "bad" : "good"}>{result.status}</Badge>{" "}
-              Finished with {result.log.length} log {result.log.length === 1 ? "line" : "lines"}.
+              {pluralize(result.log.length, "step")} recorded.
             </p>
-            <ol className="max-h-56 overflow-y-auto rounded-lg border border-line">
-              {result.log.map((line, i) => (
-                <li
-                  key={i}
-                  className="border-b border-line px-3 py-1.5 font-mono text-[12px] text-ink last:border-b-0"
-                >
-                  {line}
-                </li>
-              ))}
-            </ol>
-            {result.error && (
-              <p className="rounded-lg bg-bad-soft px-3 py-2 font-mono text-[12px] text-bad">
-                {result.error}
-              </p>
-            )}
+            <div className="max-h-[22rem] overflow-y-auto">
+              <RunLog run={result} />
+            </div>
           </div>
         )
       ) : people.length === 0 ? (

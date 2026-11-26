@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { Badge, EmptyState } from "@/components/ui";
+import { RunTimeline } from "./RunTimeline";
 import { PersonCell } from "@/components/people/PersonBits";
 import { cx, duration, formatDateTime, relativeTime } from "@/lib/format";
 import type { Person, WorkflowRun } from "@/lib/types";
@@ -113,24 +114,45 @@ export function RunList({
 }
 
 export function RunLog({ run }: { run: WorkflowRun }) {
+  const [raw, setRaw] = useState(false);
+
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">Run log</p>
-      <ol className="overflow-hidden rounded-lg border border-line bg-surface">
-        {run.log.length === 0 ? (
-          <li className="px-3 py-2 text-[13px] text-muted">No steps ran.</li>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+          {raw ? "Raw log" : "What happened"}
+        </p>
+        <button
+          type="button"
+          onClick={() => setRaw((v) => !v)}
+          className="text-[11px] font-medium text-muted hover:text-ink"
+        >
+          {raw ? "Show summary" : "Show raw log"}
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-line bg-surface px-3">
+        {raw ? (
+          <ol className="-mx-3">
+            {run.log.length === 0 ? (
+              <li className="px-3 py-2 text-[13px] text-muted">No steps ran.</li>
+            ) : (
+              run.log.map((line, i) => (
+                <li
+                  key={i}
+                  className="flex gap-3 border-b border-line px-3 py-1.5 font-mono text-[12px] leading-relaxed text-ink last:border-b-0"
+                >
+                  <span className="w-5 shrink-0 text-right text-faint">{i + 1}</span>
+                  <span className="min-w-0 break-words">{line}</span>
+                </li>
+              ))
+            )}
+          </ol>
         ) : (
-          run.log.map((line, i) => (
-            <li
-              key={i}
-              className="flex gap-3 border-b border-line px-3 py-1.5 font-mono text-[12px] leading-relaxed text-ink last:border-b-0"
-            >
-              <span className="w-5 shrink-0 text-right text-faint">{i + 1}</span>
-              <span className="min-w-0 break-words">{line}</span>
-            </li>
-          ))
+          <RunTimeline log={run.log} done={run.status === "completed"} />
         )}
-      </ol>
+      </div>
+
       {run.error && (
         <p className="rounded-lg bg-bad-soft px-3 py-2 font-mono text-[12px] text-bad">{run.error}</p>
       )}
