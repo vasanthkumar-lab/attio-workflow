@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { Copy, Mail, Plus, Trash2 } from "lucide-react";
+import { Copy, Mail, Plus, Star, Trash2 } from "lucide-react";
 import { PageBody, PageHeader } from "@/components/PageHeader";
 import {
   Badge, Button, Card, Dot, EmptyState, ErrorNote, IconButton, Menu, MenuItem, Modal, Spinner,
 } from "@/components/ui";
+import { FavoriteCard } from "@/components/sequences/FavoriteCard";
 import { api } from "@/lib/api";
+import { useFavorites } from "@/lib/favorites";
 import { useAction, useQuery } from "@/lib/hooks";
 import { blankSequence, toSequenceInput } from "@/lib/drafts";
 import { pluralize, relativeTime } from "@/lib/format";
@@ -19,7 +21,10 @@ export default function SequencesPage() {
   const sequences = useQuery(() => api.sequences.list(), []);
   const enrollments = useQuery(() => api.enrollments.list(), []);
   const { run, pending, error } = useAction();
+  const { isFavorite, ready: favoritesReady, toggle: toggleFavorite } = useFavorites("sequences");
   const [confirmDelete, setConfirmDelete] = useState<Sequence>();
+
+  const favorites = (sequences.data ?? []).filter((s) => isFavorite(s.id));
 
   const create = async () => {
     const created = await run(() => api.sequences.create(blankSequence()));
@@ -67,6 +72,31 @@ export default function SequencesPage() {
           <ErrorNote className="mb-4">{error ?? sequences.error}</ErrorNote>
         )}
 
+        {/* Hidden until storage has been read, so a saved favourite never replaces the
+            empty slot a frame later. Also hidden when there is nothing to star yet. */}
+        {favoritesReady && (sequences.data?.length ?? 0) > 0 && (
+          <section className="mb-6">
+            <h2 className="mb-2 text-[13px] font-semibold text-ink">Favorites</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {favorites.map((s) => (
+                <FavoriteCard key={s.id} sequence={s} />
+              ))}
+              {favorites.length === 0 && (
+                <div className="flex flex-col overflow-hidden rounded-xl border border-dashed border-line-strong">
+                  <div className="grid h-24 place-items-center">
+                    <Star size={18} className="text-faint" />
+                  </div>
+                  <div className="border-t border-dashed border-line-strong px-3 py-2.5">
+                    <span className="text-[12px] text-muted">
+                      Star a sequence to pin it here
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         <Card className="overflow-hidden">
           {sequences.loading ? (
             <div className="flex items-center gap-2 px-4 py-10 text-[13px] text-muted">
@@ -88,6 +118,7 @@ export default function SequencesPage() {
               {sequences.data?.map((s) => {
                 const active = countFor(s.id, (st) => st === "active");
                 const total = countFor(s.id, () => true);
+                const fav = isFavorite(s.id);
 
                 return (
                   <li key={s.id} className="border-b border-line last:border-b-0">
@@ -115,6 +146,17 @@ export default function SequencesPage() {
                           <p className="text-[12px] text-muted">{relativeTime(s.updatedAt)}</p>
                         </div>
                       </div>
+
+                      <IconButton
+                        label={fav ? "Remove from favorites" : "Add to favorites"}
+                        aria-pressed={fav}
+                        onClick={() => toggleFavorite(s.id)}
+                      >
+                        <Star
+                          size={15}
+                          className={fav ? "fill-warn text-warn" : ""}
+                        />
+                      </IconButton>
 
                       <Menu
                         trigger={({ toggle }) => (
