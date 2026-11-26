@@ -27,7 +27,6 @@ export class WorkflowEngineService {
     this.handlers = new Map(handlers.map((h) => [h.type, h]));
   }
 
-  // { async: true } runs the handler in the background, so the API call that caused the event returns immediately.
   @OnEvent(Events.PersonCreated, { async: true })
   onPersonCreated(ev: CrmEvent) { return this.dispatch(Events.PersonCreated, ev); }
 
