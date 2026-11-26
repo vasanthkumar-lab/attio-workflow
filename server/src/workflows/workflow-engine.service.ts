@@ -10,10 +10,7 @@ import { WorkflowsRepository } from './workflows.repository';
 
 const MAX_STEPS_PER_RUN = 200; // guards against runaway branches
 
-/**
- * Listens for CRM events, finds enabled workflows with a matching trigger,
- * and executes their steps. Every run is recorded with a step-by-step log.
- */
+
 @Injectable()
 export class WorkflowEngineService {
   private readonly logger = new Logger(WorkflowEngineService.name);
