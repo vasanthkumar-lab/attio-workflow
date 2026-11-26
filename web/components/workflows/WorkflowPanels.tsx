@@ -1,9 +1,9 @@
 "use client";
 
-import { BookOpen, Check, CircleAlert, GitBranch, Trash2, Zap } from "lucide-react";
+import { BookOpen, Check, CircleAlert, GitBranch, Trash2, X, Zap } from "lucide-react";
 import { BLOCK_ICONS } from "./BlockLibrary";
 import {
-  Badge, Button, Field, Input, SectionTitle, Textarea, ToggleRow,
+  Badge, Button, Field, IconButton, Input, SectionTitle, Textarea, ToggleRow,
 } from "@/components/ui";
 import { blockDef, triggerDef, TONE_CLASSES } from "@/lib/catalog";
 import { stepProblem } from "@/lib/drafts";
@@ -45,10 +45,12 @@ export function WorkflowOverview({
   draft,
   onChange,
   onSelect,
+  onClose,
 }: {
   draft: WorkflowInput;
   onChange: (next: WorkflowInput) => void;
   onSelect: (selection: Selection) => void;
+  onClose?: () => void;
 }) {
   const rows = flatten(draft.steps);
   const trigger = triggerDef(draft.trigger.event);
@@ -77,6 +79,11 @@ export function WorkflowOverview({
             onChange={(e) => onChange({ ...draft, description: e.target.value })}
           />
         </div>
+        {onClose && (
+          <IconButton label="Close panel" onClick={onClose} className="mt-0.5 shrink-0">
+            <X size={15} />
+          </IconButton>
+        )}
       </div>
 
       <div className="border-b border-line px-4 py-3">

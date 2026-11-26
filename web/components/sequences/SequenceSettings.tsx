@@ -5,7 +5,7 @@ import {
   Badge, Field, Input, SectionTitle, Select, Textarea, Toggle, ToggleRow,
 } from "@/components/ui";
 import { ConditionBuilder } from "@/components/ConditionBuilder";
-import { COMMON_TIMEZONES } from "@/lib/catalog";
+import { COMMON_TIMEZONES, UNSUBSCRIBE_PHRASES } from "@/lib/catalog";
 import { formatHour } from "@/lib/format";
 import type { Condition, SequenceInput } from "@/lib/types";
 
@@ -25,6 +25,11 @@ export function SequenceSettings({
   const timezones = COMMON_TIMEZONES.includes(draft.delivery.timezone)
     ? COMMON_TIMEZONES
     : [draft.delivery.timezone, ...COMMON_TIMEZONES];
+
+  const phrases =
+    draft.email.unsubscribeText && !UNSUBSCRIBE_PHRASES.includes(draft.email.unsubscribeText)
+      ? [draft.email.unsubscribeText, ...UNSUBSCRIBE_PHRASES]
+      : UNSUBSCRIBE_PHRASES;
 
   return (
     <div className="flex flex-col">
@@ -111,10 +116,16 @@ export function SequenceSettings({
 
       <Section title="Email">
         <Field label="Unsubscribe link" hint="Every email ends with this phrase and an opt-out link.">
-          <Input
+          <Select
             value={draft.email.unsubscribeText}
             onChange={(e) => set("email", { ...draft.email, unsubscribeText: e.target.value })}
-          />
+          >
+            {phrases.map((phrase) => (
+              <option key={phrase} value={phrase}>
+                {phrase}
+              </option>
+            ))}
+          </Select>
         </Field>
 
         <ToggleRow

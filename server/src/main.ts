@@ -10,8 +10,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  // The Next.js UI usually calls the API through its own /api rewrite (same origin),
-  // but allow direct browser calls too so NEXT_PUBLIC_API_URL can point straight here.
   app.enableCors({
     origin: process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()) ?? true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -1,9 +1,6 @@
 import { Person } from '../people/person.entity';
 
-/**
- * One source of data. Must only fill fields that are still empty,
- * so the order of providers decides who "wins".
- */
+
 export interface EnrichmentProvider {
   readonly name: string;
   enrich(person: Person, signal: AbortSignal): Promise<void>;

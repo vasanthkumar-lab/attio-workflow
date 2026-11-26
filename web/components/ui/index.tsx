@@ -1,9 +1,10 @@
 "use client";
 
 import {
-  createContext, useContext, useEffect, useId, useRef, useState,
-  type ButtonHTMLAttributes, type ComponentPropsWithRef, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useId, useRef, useState,
+  type ButtonHTMLAttributes, type ComponentPropsWithRef, type CSSProperties, type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Loader2, X } from "lucide-react";
 import { cx } from "@/lib/format";
 import type { Tone } from "@/lib/catalog";
@@ -473,6 +474,14 @@ export function Modal({
 
 const MenuContext = createContext<{ close: () => void }>({ close: () => {} });
 
+const MENU_GAP = 4;
+const MENU_EDGE = 8;
+
+/**
+ * The panel is rendered in a portal on <body> and positioned against the trigger,
+ * so an ancestor with overflow-hidden - the rounded cards the lists sit in - cannot
+ * clip it. It flips to the other side of the trigger when there is no room.
+ */
 export function Menu({
   trigger,
   children,
@@ -488,39 +497,88 @@ export function Menu({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<CSSProperties>();
+  const [dark, setDark] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const place = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const height = panelRef.current?.offsetHeight ?? 0;
+
+    const fitsBelow = window.innerHeight - r.bottom >= height + MENU_GAP + MENU_EDGE;
+    const fitsAbove = r.top >= height + MENU_GAP + MENU_EDGE;
+    const above = placement === "above" ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove;
+
+    const next: CSSProperties = { position: "fixed" };
+    if (above) {
+      next.bottom = window.innerHeight - r.top + MENU_GAP;
+      next.maxHeight = r.top - MENU_GAP - MENU_EDGE;
+    } else {
+      next.top = r.bottom + MENU_GAP;
+      next.maxHeight = window.innerHeight - r.bottom - MENU_GAP - MENU_EDGE;
+    }
+    if (align === "right") next.right = Math.max(MENU_EDGE, window.innerWidth - r.right);
+    else next.left = Math.max(MENU_EDGE, r.left);
+
+    // The canvas builder is dark while the rest of the app is light. The portal sits
+    // outside that wrapper, so carry the scope across or the menu renders light on dark.
+    setDark(Boolean(anchor.closest(".canvas-dark")));
+    setStyle(next);
+  }, [align, placement]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setStyle(undefined);
+      return;
+    }
+    place();
+
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (anchorRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    // Capture phase, so scrolling a panel the trigger sits in repositions it too.
+    window.addEventListener("scroll", place, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
-  }, [open]);
+  }, [open, place]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={anchorRef} className="relative">
       {trigger({ open, toggle: () => setOpen((v) => !v) })}
-      {open && (
-        <MenuContext.Provider value={{ close: () => setOpen(false) }}>
-          <div
-            className={cx(
-              "absolute z-40 min-w-48 overflow-hidden rounded-lg border border-line bg-surface p-1 shadow-pop",
-              placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
-              align === "right" ? "right-0" : "left-0",
-              className,
-            )}
-          >
-            {children}
-          </div>
-        </MenuContext.Provider>
-      )}
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <MenuContext.Provider value={{ close: () => setOpen(false) }}>
+            <div
+              ref={panelRef}
+              // Measured before it is placed, so keep it out of sight for that first frame.
+              style={{ position: "fixed", visibility: style ? "visible" : "hidden", ...style }}
+              className={cx(
+                "z-40 min-w-48 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-pop",
+                dark && "canvas-dark",
+                className,
+              )}
+            >
+              {children}
+            </div>
+          </MenuContext.Provider>,
+          document.body,
+        )}
     </div>
   );
 }

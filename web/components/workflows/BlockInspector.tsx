@@ -19,9 +19,11 @@ import type {
 export function TriggerInspector({
   draft,
   onChange,
+  onClose,
 }: {
   draft: WorkflowInput;
   onChange: (next: WorkflowInput) => void;
+  onClose?: () => void;
 }) {
   const def = triggerDef(draft.trigger.event);
 
@@ -35,6 +37,13 @@ export function TriggerInspector({
         title="Trigger"
         subtitle={def.label}
         icon={<span className="text-[13px] font-bold">1</span>}
+        actions={
+          onClose && (
+            <IconButton label="Close panel" onClick={onClose}>
+              <X size={15} />
+            </IconButton>
+          )
+        }
       />
 
       <Section title="Run this workflow when">

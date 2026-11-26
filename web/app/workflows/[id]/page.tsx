@@ -49,6 +49,7 @@ function WorkflowBuilder() {
   const [draft, setDraft] = useState<WorkflowInput>();
   const [selected, setSelected] = useState<Selection>({ kind: "none" });
   const [tab, setTab] = useState<Tab>(highlightedRun ? "runs" : "editor");
+  const [panelOpen, setPanelOpen] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { run, pending, error } = useAction();
@@ -94,6 +95,18 @@ function WorkflowBuilder() {
   const discard = () => {
     if (!workflow.data) return;
     setDraft(toWorkflowInput(workflow.data));
+    setSelected({ kind: "none" });
+  };
+
+  // Picking something on the canvas means you want to edit it, so bring the panel back.
+  const select = (next: Selection) => {
+    setSelected(next);
+    if (next.kind !== "none") setPanelOpen(true);
+  };
+
+  // Closing returns to a neutral state, so reopening always lands on the checklist.
+  const closePanel = () => {
+    setPanelOpen(false);
     setSelected({ kind: "none" });
   };
 
@@ -237,15 +250,17 @@ function WorkflowBuilder() {
             <WorkflowCanvas
               draft={draft}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={select}
               onChange={setDraft}
               sequencesById={sequencesById}
+              onShowPanel={panelOpen ? undefined : () => setPanelOpen(true)}
             />
           </div>
 
+          {panelOpen && (
           <aside className="w-[380px] shrink-0 overflow-y-auto border-l border-line bg-surface">
             {selected.kind === "trigger" ? (
-              <TriggerInspector draft={draft} onChange={setDraft} />
+              <TriggerInspector draft={draft} onChange={setDraft} onClose={closePanel} />
             ) : selected.kind === "step" && selectedStep ? (
               <BlockInspector
                 step={selectedStep}
@@ -264,12 +279,18 @@ function WorkflowBuilder() {
                   setDraft({ ...draft, steps: moved.steps });
                   setSelected({ kind: "step", path: moved.path });
                 }}
-                onClose={() => setSelected({ kind: "none" })}
+                onClose={closePanel}
               />
             ) : (
-              <WorkflowOverview draft={draft} onChange={setDraft} onSelect={setSelected} />
+              <WorkflowOverview
+                draft={draft}
+                onChange={setDraft}
+                onSelect={setSelected}
+                onClose={closePanel}
+              />
             )}
           </aside>
+          )}
         </div>
       ) : tab === "runs" ? (
         <div className="min-h-0 flex-1 overflow-y-auto p-6">

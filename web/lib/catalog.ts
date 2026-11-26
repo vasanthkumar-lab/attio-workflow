@@ -256,6 +256,17 @@ export const ENROLLMENT_STATUS: Record<string, { label: string; tone: Tone }> = 
   failed: { label: "Failed", tone: "bad" },
 };
 
+/** Wording offered for the opt-out line at the end of every sequence email. */
+export const UNSUBSCRIBE_PHRASES = [
+  "Stop hearing from me",
+  "Not interested",
+  "Stop reaching out",
+  "Click here to unsubscribe",
+  "Opt out",
+  "Unsubscribe from email",
+  "Unsubscribe",
+];
+
 export const COMMON_TIMEZONES = [
   "Asia/Kolkata",
   "UTC",

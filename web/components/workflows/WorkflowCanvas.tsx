@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Blocks, ChevronDown, Crosshair, Hand, MousePointer2, Plus, Target, TriangleAlert, Zap,
+  Blocks, ChevronDown, Crosshair, Hand, MousePointer2, PanelRight, Plus, Target,
+  TriangleAlert, Zap,
 } from "lucide-react";
 import { BLOCK_ICONS, BlockPicker } from "./BlockLibrary";
 import { blockSummary } from "./blockSummary";
@@ -47,12 +48,15 @@ export function WorkflowCanvas({
   onSelect,
   onChange,
   sequencesById,
+  onShowPanel,
 }: {
   draft: WorkflowInput;
   selected: Selection;
   onSelect: (selection: Selection) => void;
   onChange: (next: WorkflowInput) => void;
   sequencesById: Map<string, Sequence>;
+  /** Only passed while the side panel is hidden, which is what shows the reopen button. */
+  onShowPanel?: () => void;
 }) {
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
   const [tool, setTool] = useState<Tool>("pointer");
@@ -427,6 +431,20 @@ export function WorkflowCanvas({
           )}
         </div>
       </div>
+
+      {onShowPanel && (
+        <button
+          type="button"
+          onClick={onShowPanel}
+          title="Show the side panel"
+          aria-label="Show the side panel"
+          data-no-pan
+          className="absolute right-3 top-3 z-30 inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-2.5 text-[12px] font-medium text-ink shadow-pop transition-colors hover:bg-raised"
+        >
+          <PanelRight size={15} className="text-muted" />
+          Panel
+        </button>
+      )}
 
       <Toolbar
         zoom={view.zoom}
