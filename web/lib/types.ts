@@ -103,6 +103,25 @@ export interface SentEmail {
   subject: string;
   messageId: string;
   sentAt: string;
+  /** The rendered body, after templating. Absent on emails sent before we kept it. */
+  body?: string;
+}
+
+/** A reply from the lead. */
+export interface ReceivedEmail {
+  messageId: string;
+  from: string;
+  subject: string;
+  body: string;
+  receivedAt: string;
+  inReplyTo?: string;
+}
+
+export interface ReplyInput {
+  body?: string;
+  from?: string;
+  subject?: string;
+  receivedAt?: string;
 }
 
 export interface Enrollment {
@@ -118,6 +137,7 @@ export interface Enrollment {
   threadMessageId?: string;
   firstSubject?: string;
   sent: SentEmail[];
+  received: ReceivedEmail[];
   failures: number;
   lastError?: string;
   enrolledBy: string;

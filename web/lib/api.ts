@@ -1,6 +1,6 @@
 import type {
   Enrollment, EnrollmentStatus, EnrollResult, Person, PersonInput,
-  Sequence, SequenceInput, SequenceStats, Workflow, WorkflowInput, WorkflowRun,
+  ReplyInput, Sequence, SequenceInput, SequenceStats, Workflow, WorkflowInput, WorkflowRun,
 } from "./types";
 
 /**
@@ -98,7 +98,7 @@ export const api = {
       return get<Enrollment[]>(`/enrollments${qs ? `?${qs}` : ""}`);
     },
     get: (id: string) => get<Enrollment>(`/enrollments/${id}`),
-    reply: (id: string) => post<Enrollment>(`/enrollments/${id}/reply`),
+    reply: (id: string, reply?: ReplyInput) => post<Enrollment>(`/enrollments/${id}/reply`, reply ?? {}),
     pause: (id: string) => post<Enrollment>(`/enrollments/${id}/pause`),
     resume: (id: string) => post<Enrollment>(`/enrollments/${id}/resume`),
     remove: (id: string) => post<Enrollment>(`/enrollments/${id}/remove`),

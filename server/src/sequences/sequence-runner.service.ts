@@ -119,7 +119,7 @@ export class SequenceRunnerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    e.sent.push({ step: e.currentStep, subject, messageId: sent.messageId, sentAt: now.toISOString() });
+    e.sent.push({ step: e.currentStep, subject, messageId: sent.messageId, sentAt: now.toISOString(), body: text });
     if (!isFollowUp) {
       e.threadMessageId = sent.messageId;
       e.providerThreadId = sent.threadId;

@@ -4,7 +4,7 @@ import { evaluate } from '../common/conditions';
 import { CrmEvent, Events } from '../common/events';
 import { newId } from '../common/id';
 import { PeopleService } from '../people/people.service';
-import { Enrollment, EnrollmentStatus, Sequence } from './sequence.types';
+import { Enrollment, EnrollmentStatus, ReplyInput, Sequence } from './sequence.types';
 import { scheduleStep } from './sequence-timing';
 import { validateSequenceInput } from './sequence.validation';
 import { SequencesRepository } from './sequences.repository';
@@ -112,6 +112,7 @@ export class SequencesService {
       nextSendAt: scheduleStep(seq, now, seq.steps[0].waitBusinessDays).toISOString(),
       replied: false,
       sent: [],
+      received: [],
       failures: 0,
       enrolledBy,
       enrolledAt: now.toISOString(),
@@ -149,11 +150,32 @@ export class SequencesService {
     return this.repo.saveEnrollment(e);
   }
 
-  /** Call this from your inbox sync (Gmail push / Microsoft Graph / IMAP) when a reply arrives. */
-  async markReplied(id: string) {
+  /**
+   * Call this from your inbox sync (Gmail push / Microsoft Graph / IMAP) when a reply
+   * arrives, passing the message so it lands in the thread. Without one we still flag
+   * the enrollment, which is all this did before and all a human clicking a button can
+   * honestly claim: somebody replied, go and read it in your mail client.
+   */
+  async markReplied(id: string, reply?: ReplyInput) {
     const e = await this.getEnrollment(id);
     const seq = await this.get(e.sequenceId);
     e.replied = true;
+    // Enrollments created before replies were storable have no array.
+    e.received ??= [];
+
+    const body = reply?.body?.trim();
+    if (body) {
+      const person = await this.people.get(e.personId);
+      const last = e.sent.at(-1);
+      e.received.push({
+        messageId: reply?.messageId?.trim() || newId('msg'),
+        from: reply?.from?.trim() || person.email,
+        subject: reply?.subject?.trim() || (e.firstSubject ? `Re: ${e.firstSubject}` : '(no subject)'),
+        body,
+        receivedAt: reply?.receivedAt ?? new Date().toISOString(),
+        inReplyTo: reply?.inReplyTo?.trim() || last?.messageId,
+      });
+    }
     const saved = seq.exitCriteria.onReply ? await this.finish(e, 'exited', 'replied') : await this.repo.saveEnrollment(e);
     this.events.emit(Events.EnrollmentReplied, { personId: e.personId, enrollmentId: e.id, sequenceId: e.sequenceId } satisfies CrmEvent);
     return saved;
@@ -195,13 +217,16 @@ export class SequencesService {
     const all = await this.repo.findEnrollments({ sequenceId });
     const byStatus: Record<string, number> = {};
     for (const e of all) byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
-    const contacted = all.filter((e) => e.sent.length > 0).length;
-    const replied = all.filter((e) => e.replied).length;
+    // Both sides have to be the same population. Counting every replied enrollment
+    // over only the contacted ones let the rate exceed 100% as soon as somebody was
+    // marked as replied before their first email went out.
+    const contacted = all.filter((e) => e.sent.length > 0);
+    const replied = contacted.filter((e) => e.replied).length;
     return {
       total: all.length,
       byStatus,
       emailsSent: all.reduce((n, e) => n + e.sent.length, 0),
-      replyRate: contacted ? Math.round((replied / contacted) * 100) + '%' : '0%',
+      replyRate: contacted.length ? Math.round((replied / contacted.length) * 100) + '%' : '0%',
     };
   }
 

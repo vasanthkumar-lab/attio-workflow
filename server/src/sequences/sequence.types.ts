@@ -50,6 +50,30 @@ export interface SentEmail {
   subject: string;
   messageId: string;
   sentAt: string;
+  /** The rendered body. Kept so the thread shows what was actually sent, after
+   *  templating - not the template, which is what the step holds. */
+  body?: string;
+}
+
+/** What an inbox sync, or a person pasting a reply in, hands us. */
+export interface ReplyInput {
+  body?: string;
+  from?: string;
+  subject?: string;
+  messageId?: string;
+  inReplyTo?: string;
+  receivedAt?: string;
+}
+
+/** A reply from the lead. One of these is what turns `replied` from a flag into a thing you can read. */
+export interface ReceivedEmail {
+  messageId: string;
+  from: string;
+  subject: string;
+  body: string;
+  receivedAt: string;
+  /** Which of our messages it answers, when the source tells us. */
+  inReplyTo?: string;
 }
 
 export interface Enrollment {
@@ -67,6 +91,8 @@ export interface Enrollment {
   providerThreadId?: string;
   firstSubject?: string;
   sent: SentEmail[];
+  /** Inbound mail on this conversation, oldest first. */
+  received: ReceivedEmail[];
   failures: number;
   lastError?: string;
   enrolledBy: string;

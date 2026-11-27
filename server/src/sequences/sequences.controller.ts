@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query } from '@nestjs/common';
-import { EnrollDto, SetEnabledDto } from './sequences.dto';
+import { EnrollDto, ReplyDto, SetEnabledDto } from './sequences.dto';
 import { EnrollmentStatus } from './sequence.types';
 import { SequencesService } from './sequences.service';
 
@@ -29,7 +29,7 @@ export class EnrollmentsController {
     return this.sequences.listEnrollments(undefined, status, personId);
   }
   @Get(':id') get(@Param('id') id: string) { return this.sequences.getEnrollment(id); }
-  @Post(':id/reply') reply(@Param('id') id: string) { return this.sequences.markReplied(id); }
+  @Post(':id/reply') reply(@Param('id') id: string, @Body() dto?: ReplyDto) { return this.sequences.markReplied(id, dto); }
   @Post(':id/pause') pause(@Param('id') id: string) { return this.sequences.pause(id); }
   @Post(':id/resume') resume(@Param('id') id: string) { return this.sequences.resume(id); }
   @Post(':id/remove') remove(@Param('id') id: string) { return this.sequences.remove(id); }

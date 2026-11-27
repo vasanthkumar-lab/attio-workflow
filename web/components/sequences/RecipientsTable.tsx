@@ -5,7 +5,8 @@ import Link from "next/link";
 import {
   ChevronDown, ChevronRight, CornerUpLeft, LogOut, Pause, Play,
 } from "lucide-react";
-import { Avatar, Badge, ErrorNote, IconButton, Menu, MenuItem } from "@/components/ui";
+import { Avatar, Badge, Button, ErrorNote, IconButton, Menu, MenuItem, Textarea } from "@/components/ui";
+import { EmailThread } from "@/components/sequences/EmailThread";
 import { PersonCell } from "@/components/people/PersonBits";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
@@ -130,7 +131,11 @@ export function RecipientsList({ enrollments, peopleById, sequencesById, onChang
 
             {expanded && (
               <div className="border-t border-line bg-raised px-3 py-2.5">
-                <EnrollmentDetail enrollment={e} sequence={sequencesById.get(e.sequenceId)} />
+                <EnrollmentDetail
+                  enrollment={e}
+                  sequence={sequencesById.get(e.sequenceId)}
+                  onChanged={onChanged}
+                />
               </div>
             )}
           </li>
@@ -231,7 +236,7 @@ export function RecipientsTable({
                   {expanded && (
                     <tr className="border-b border-line bg-raised last:border-b-0">
                       <td colSpan={7} className="px-10 py-3">
-                        <EnrollmentDetail enrollment={e} sequence={sequence} />
+                        <EnrollmentDetail enrollment={e} sequence={sequence} onChanged={onChanged} />
                       </td>
                     </tr>
                   )}
@@ -248,9 +253,11 @@ export function RecipientsTable({
 function EnrollmentDetail({
   enrollment: e,
   sequence,
+  onChanged,
 }: {
   enrollment: Enrollment;
   sequence?: Sequence;
+  onChanged: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -275,26 +282,67 @@ function EnrollmentDetail({
         </ErrorNote>
       )}
 
+      <EmailThread enrollment={e} />
+      {e.sent.length > 0 && <LogReply enrollment={e} onLogged={onChanged} />}
+    </div>
+  );
+}
+
+/**
+ * Until an inbox sync exists, a reply gets into the CRM because somebody read it in
+ * their mail client and pasted it here. That is worth building anyway: the sync will
+ * call the same endpoint, so this is the manual path to the same place, not a stand-in
+ * that gets thrown away.
+ */
+function LogReply({ enrollment: e, onLogged }: { enrollment: Enrollment; onLogged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState("");
+  const { run, pending, error } = useAction();
+
+  if (!open) {
+    return (
       <div>
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          Emails sent
-        </p>
-        {e.sent.length === 0 ? (
-          <p className="text-[13px] text-muted">Nothing sent yet.</p>
-        ) : (
-          <ol className="flex flex-col gap-1.5">
-            {e.sent.map((sent) => (
-              <li
-                key={sent.messageId}
-                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-line bg-surface px-2.5 py-1.5"
-              >
-                <Badge tone="accent">Step {sent.step + 1}</Badge>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-ink">{sent.subject}</span>
-                <span className="text-[11px] text-muted">{formatDateTime(sent.sentAt)}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+        <Button variant="ghost" onClick={() => setOpen(true)}>
+          <CornerUpLeft className="size-3.5" />
+          {e.replied ? "Log another reply" : "Log a reply"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface p-2.5">
+      <Textarea
+        autoFocus
+        rows={4}
+        value={body}
+        onChange={(ev) => setBody(ev.target.value)}
+        placeholder="Paste what they wrote back..."
+      />
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="primary"
+          loading={pending}
+          disabled={pending || !body.trim()}
+          onClick={async () => {
+            const saved = await run(() => api.enrollments.reply(e.id, { body }));
+            // Only clear on success, or a failed save silently eats what they typed.
+            if (saved) {
+              setBody("");
+              setOpen(false);
+              onLogged();
+            }
+          }}
+        >
+          Save reply
+        </Button>
+        <Button variant="ghost" onClick={() => { setOpen(false); setBody(""); }}>
+          Cancel
+        </Button>
+        <span className="text-[11px] text-faint">
+          Stops follow-ups and fires any workflow listening for a reply.
+        </span>
       </div>
     </div>
   );
