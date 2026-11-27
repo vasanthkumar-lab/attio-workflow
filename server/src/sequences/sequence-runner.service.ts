@@ -4,7 +4,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { evaluate } from '../common/conditions';
 import { CrmEvent, Events } from '../common/events';
 import { missingFields, renderTemplate } from '../common/template';
-import { MAIL_SENDER, MailSender } from '../email/mail-sender';
+import { MAIL_SENDER, MailSender, SendResult } from '../email/mail-sender';
 import { PeopleService } from '../people/people.service';
 import { Enrollment } from './sequence.types';
 import { FAST_DEMO, nextWindowTime, scheduleStep } from './sequence-timing';
@@ -97,14 +97,16 @@ export class SequenceRunnerService implements OnModuleInit, OnModuleDestroy {
     if (seq.email.includeSignature && seq.signature) text += `\n\n${renderTemplate(seq.signature, data)}`;
     text += `\n\n${seq.email.unsubscribeText}: ${unsubscribeUrl}`;
 
-    let messageId: string;
+    const inThread = seq.email.threadEmails && isFollowUp;
+    let sent: SendResult;
     try {
-      messageId = await this.mail.send({
+      sent = await this.mail.send({
         from: e.sender,
         to: person.email,
         subject,
         text,
-        inReplyTo: seq.email.threadEmails && isFollowUp ? e.threadMessageId : undefined,
+        inReplyTo: inThread ? e.threadMessageId : undefined,
+        threadId: inThread ? e.providerThreadId : undefined,
         unsubscribeUrl,
       });
     } catch (err: any) {
@@ -117,9 +119,10 @@ export class SequenceRunnerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    e.sent.push({ step: e.currentStep, subject, messageId, sentAt: now.toISOString() });
+    e.sent.push({ step: e.currentStep, subject, messageId: sent.messageId, sentAt: now.toISOString() });
     if (!isFollowUp) {
-      e.threadMessageId = messageId;
+      e.threadMessageId = sent.messageId;
+      e.providerThreadId = sent.threadId;
       e.firstSubject = subject;
     }
     e.failures = 0;

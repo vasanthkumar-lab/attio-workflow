@@ -8,12 +8,23 @@ export interface OutgoingEmail {
   subject: string;
   text: string;
   inReplyTo?: string; // Message-ID of the first email -> follow-ups appear in the same thread
+  /** The provider's own conversation handle, when it has one. Gmail threads on this. */
+  threadId?: string;
   unsubscribeUrl?: string;
 }
 
+export interface SendResult {
+  /** RFC 5322 Message-ID, which the next step quotes in In-Reply-To. */
+  messageId: string;
+  /**
+   * Set only by providers that thread on their own identifier rather than on headers.
+   * Carried back unchanged on the follow-up so the conversation stays one thread.
+   */
+  threadId?: string;
+}
+
 export interface MailSender {
-  /** Sends the email and returns its Message-ID. */
-  send(mail: OutgoingEmail): Promise<string>;
+  send(mail: OutgoingEmail): Promise<SendResult>;
 }
 
 export const MAIL_SENDER = Symbol('MAIL_SENDER');
@@ -29,7 +40,7 @@ export class ConsoleMailSender implements MailSender {
     const id = messageId(mail.from);
     const thread = mail.inReplyTo ? ` (reply in thread ${mail.inReplyTo})` : '';
     this.logger.log(`${mail.from} -> ${mail.to}${thread}\n  Subject: ${mail.subject}\n  ${mail.text.replace(/\n/g, '\n  ')}`);
-    return id;
+    return { messageId: id };
   }
 }
 
@@ -55,6 +66,6 @@ export class SmtpMailSender implements MailSender {
       list: mail.unsubscribeUrl ? { unsubscribe: { url: mail.unsubscribeUrl, comment: 'Unsubscribe' } } : undefined,
       headers: mail.unsubscribeUrl ? { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : undefined,
     });
-    return id;
+    return { messageId: id };
   }
 }

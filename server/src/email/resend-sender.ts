@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { MailSender, OutgoingEmail } from './mail-sender';
+import { MailSender, OutgoingEmail, SendResult } from './mail-sender';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
@@ -8,7 +8,7 @@ export class ResendMailSender implements MailSender {
   private readonly logger = new Logger('Resend');
   private readonly apiKey = process.env.RESEND_API_KEY!;
 
-  async send(mail: OutgoingEmail): Promise<string> {
+  async send(mail: OutgoingEmail): Promise<SendResult> {
     const domain = mail.from.split('@')[1] ?? 'resend.dev';
     const id = `<${randomBytes(12).toString('hex')}@${domain}>`;
 
@@ -42,6 +42,6 @@ export class ResendMailSender implements MailSender {
     }
 
     this.logger.log(`sent to ${mail.to}: ${mail.subject}`);
-    return id;
+    return { messageId: id };
   }
 }

@@ -178,6 +178,39 @@ export class MailboxesService {
     }
   }
 
+  /**
+   * Claims one send against today's allowance, returning false when the mailbox is
+   * already at its limit.
+   *
+   * Gmail cuts a free account off at around 500 messages a day and a Workspace one at
+   * 2000, and it does not fail politely - it starts bouncing, and a mailbox that trips
+   * it can end up restricted for a day. Counting here means we stop first.
+   *
+   * In a transaction because the read and the write have to agree; without one, two
+   * ticks overlapping would both see 499 and both send.
+   */
+  async reserveSend(email: string): Promise<boolean> {
+    if (!this.prisma.enabled) return true;
+
+    return this.prisma.db.$transaction(async (tx) => {
+      const row = await tx.mailboxConnection.findUnique({
+        where: { workspaceId_email: { workspaceId: 'default', email: email.toLowerCase() } },
+      });
+      // Nothing connected: this send is going out over the transactional sender, whose
+      // quota is not ours to track.
+      if (!row) return true;
+
+      const sentToday = this.todaysCount(row.sentToday, row.sentTodayOn);
+      if (sentToday >= row.dailyLimit) return false;
+
+      await tx.mailboxConnection.update({
+        where: { id: row.id },
+        data: { sentToday: sentToday + 1, sentTodayOn: new Date() },
+      });
+      return true;
+    });
+  }
+
   // ------------------------------------------------------------------ helpers
 
   private todaysCount(sentToday: number, on: Date | null): number {

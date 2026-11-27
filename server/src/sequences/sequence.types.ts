@@ -63,6 +63,8 @@ export interface Enrollment {
   exitReason?: string;
   replied: boolean;
   threadMessageId?: string;
+  /** Gmail's handle on the conversation, when the sender was a connected mailbox. */
+  providerThreadId?: string;
   firstSubject?: string;
   sent: SentEmail[];
   failures: number;
