@@ -1,0 +1,62 @@
+// Only the mailbox connections live in Postgres. Everything else - people,
+// sequences, enrollments, runs - is still in memory, which is fine for a demo
+// because losing it costs nothing. Tokens are different: making a salesperson
+// reconnect Gmail after every restart would make the feature unusable, and the
+// refresh token is a credential that has to outlive the process.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// No `url` here: Prisma 7 takes the migrate connection from prisma.config.ts, and the
+// application connects through a driver adapter instead.
+datasource db {
+  provider = "postgresql"
+}
+
+enum MailProvider {
+  GOOGLE
+  MICROSOFT
+}
+
+enum MailboxStatus {
+  ACTIVE
+  REAUTH_REQUIRED
+  REVOKED
+}
+
+model MailboxConnection {
+  id String @id @default(cuid())
+
+  /// There are no accounts yet. The column exists so that adding them later is a
+  /// backfill rather than a migration of live data.
+  workspaceId String @default("default")
+
+  /// The address mail is sent from, and the key `enrollment.sender` resolves against.
+  email       String
+  provider    MailProvider @default(GOOGLE)
+  displayName String?
+
+  /// Both are AES-256-GCM ciphertext, never the raw token. See token-crypto.ts.
+  accessToken   String
+  refreshToken  String
+  accessExpires DateTime
+  scopes        String[]
+
+  status       MailboxStatus @default(ACTIVE)
+  statusDetail String?
+
+  /// Providers suspend accounts that run past their quota, so sending has to count.
+  /// sentTodayOn is the day the counter belongs to; it resets lazily on read rather
+  /// than needing a scheduled job.
+  dailyLimit  Int       @default(300)
+  sentToday   Int       @default(0)
+  sentTodayOn DateTime?
+
+  connectedBy String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([workspaceId, email])
+  @@index([status])
+}

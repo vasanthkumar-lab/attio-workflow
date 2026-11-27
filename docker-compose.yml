@@ -1,0 +1,26 @@
+# Postgres for the mailbox connections. Host port 5433, not 5432, because a local
+# Postgres service often already owns 5432 - and when it does, the container's
+# mapping is silently shadowed and you get an auth error that looks like a bad
+# password. If you would rather use a Postgres you already run, skip this file and
+# point DATABASE_URL at it instead.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: hyring-crm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: crm
+    ports:
+      - "5433:5432"
+    volumes:
+      - crm-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  crm-db:

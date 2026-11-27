@@ -13,5 +13,5 @@
     "sourceMap": true,
     "types": ["node", "jest"]
   },
-  "include": ["src"]
+  "include": ["src", "prisma.config.ts"]
 }
